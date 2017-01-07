@@ -7,7 +7,7 @@ multi-thread, multi-format compression tool and library (implementation in C++03
 
  - CMake 3.0.0 or higher
 
-## Building for for Windows Desktop
+## Building for Windows
 
   - Under construction
 
@@ -39,5 +39,5 @@ multi-thread, multi-format compression tool and library (implementation in C++03
         
 ## See also
 
- - [lz4 Extremely Fast Compression algorithm](https://github.com/lz4/lz4)
+ - [lz4 - Extremely Fast Compression](https://github.com/lz4/lz4)
 
