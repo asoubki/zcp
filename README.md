@@ -1,8 +1,7 @@
 # zcp
 
-multi-thread, multi-format compression tool and library
-[lz4 stream ](https://docs.google.com/document/d/1gZbUoLw5hRzJ5Q71oPRN6TO4cRMTZur60qip-TE7BhQ/edit?pli=1)
-implementation in C++03/C++98
+multi-thread, multi-format compression tool and library (implementation in C++03/C++98)
+
 
 ## Pre-Requirement
 
@@ -40,5 +39,5 @@ implementation in C++03/C++98
         
 ## See also
 
- - [lz4 Extremely Fast Compression algorithm](https://code.google.com/p/lz4/)
+ - [lz4 Extremely Fast Compression algorithm](https://github.com/lz4/lz4)
 
