@@ -33,5 +33,14 @@ cmake_minimum_required(VERSION 3.0.0)
 #                             Generate Tests 
 # =======================================================================
 
+macro (unittest name)
+    add_executable (${name} ${CMAKE_SOURCE_DIR}/src/tests/${name}.cpp)
+    target_link_libraries (${name} zfile)
+#    add_test (NAME ${name} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+#        COMMAND ${CMAKE_CURRENT_BINARY_DIR}/${name})
+endmacro (unittest)
+
+unittest (unitest)
+
 
 

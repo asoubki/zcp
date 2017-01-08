@@ -42,6 +42,30 @@ zFile::CompressionType_t zFile::getFormat(const char * filename)
     return e_none;
 }
 
+
+/*!
+ * \brief   get compression type translation
+ * 
+ * \param type [in] : compression typê
+ *
+ * \return compression type const char 
+ * */
+const char * zFile::toString(CompressionType_t type)
+{
+  switch(type) 
+  {
+    case zFile::e_lz4     : return "lz4";
+    case zFile::e_lz4hc   : return "lz4hc";
+    case zFile::e_snappy  : return "snappy";
+    case zFile::e_zlib    : return "zlib"; 
+    case zFile::e_zstd    : return "zstd"; 
+    case zFile::e_none    : return "none";
+    case zFile::e_zerr    :
+    default               : return "error";    
+  }
+}
+
+
 /*!
  * \brief   create the appropriate zFile stream
  * 
@@ -102,6 +126,7 @@ zFile::zFile (const char * filename, OpenMode_t mode, uint32_t blocsize, uint16_
   // initialize memebers
   _file.filename     = filename;
   _file.mode         = mode;
+  _file.type         = e_none;
  
   _zip.level         = __compression_level__;
   _zip.noffset       = 0;
@@ -339,7 +364,7 @@ void zFile::flush()
   __log__(__ZFILE_WRITE_DEBUG__, "[FLUSH] : flush data %ld\n", pool->getOutsize());  
   _file.stream.write(pool->getOutptr(), pool->getOutsize());
   // update Index table
-  _listindex.push_back( IndexEntry_t( _zip.noffset, _zip.nzoffset) );
+  _listindex.insert( IndexEntry_t( _zip.noffset, pool->getInsize(), _zip.nzoffset, pool->getOutsize() & 0x7fffffff) );
   _zip.nzoffset  += pool->getOutsize() & 0x7fffffff;
   _zip.noffset   += pool->getInsize();
 
@@ -350,9 +375,13 @@ void zFile::flush()
 }     
 
 /*!
- * \brief seek position (through compression)
+ * \brief seek position in the file. the position provided is 
+ *        relative to the file
  *
- * \param offset [in] : seek offset (can be negatif) in the uncompressed file
+ * This function do not take into account the file type. it seek the requested 
+ * position in the openned file
+ *
+ * \param offset [in] : seek offset (can be negatif) in the file
  * \param way    [in] : seek way
  *
  * \return returned a boolean telling if an error accured during the last 
@@ -360,8 +389,46 @@ void zFile::flush()
  */
 bool zFile::seekf(size_t offset, SeekDirection_t way)
 {
-  if (_file.mode == e_ReadMode)
+  switch (way) 
   {
+    case e_SeekBegin   : _file.stream.seekg(offset, ios_base::beg); break;
+    case e_SeekCurrent : _file.stream.seekg(offset, ios_base::cur); break;
+    case e_SeekEnd     : _file.stream.seekg(offset, ios_base::end); break;
+  }
+  if (_file.stream.fail())
+    return false;
+  else
+    return true;  
+}
+
+/*!
+ * \brief seek position in the uncompressed file. the position provided is 
+ *        relative to the uncompressed file
+ *
+ * \param offset [in] : seek offset (can be negatif) in the unzipped file
+ * \param way    [in] : seek way
+ *
+ * \return returned a boolean telling if an error accured during the last 
+ *         operation 
+ */
+bool zFile::seekz(size_t offset, SeekDirection_t way)
+{
+  if (_file.type == e_none)
+    return seekf(offset, way);
+  else if (_file.mode == e_WriteMode)
+  {
+    setError(e_SeekError, "Seek unhandled for write mode files");
+    return false;
+  }
+  else
+  {
+    // check if index list
+    if (_listindex.size() == 0)
+    {
+      setError(e_SeekError, "Seekz unhandled for none-indexed files");
+      return false;
+    }
+    // search for index
     switch (way) 
     {
       case e_SeekBegin   : _file.stream.seekg(offset, ios_base::beg); break;
@@ -372,11 +439,6 @@ bool zFile::seekf(size_t offset, SeekDirection_t way)
       return false;
     else
       return true;
-  }
-  else
-  {
-    setError(e_SeekError, "Seek unhandled for write mode files");
-    return false;
   }
 }
 

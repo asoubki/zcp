@@ -88,28 +88,6 @@ const char * extention (zFile::CompressionType_t type)
   }
 }
 
-/*!
- * \brief  get compression type in str based on the compression type
- *
- * \param type [in] : compression type
- * */
-const char * tostring (zFile::CompressionType_t type)
-{
-  switch(type) 
-  {
-    case zFile::e_lz4     : return "lz4";
-    case zFile::e_lz4hc   : return "lz4hc";
-    case zFile::e_snappy  : return "snappy";
-    case zFile::e_zlib    : return "zlib"; 
-    case zFile::e_zstd    : return "zstd"; 
-    case zFile::e_none    : return "none";
-    case zFile::e_zerr    :
-    default               : return "error";    
-  }
-}
-
-
-
 /*! 
  *
  * \fn      printUsage
@@ -325,14 +303,18 @@ int main(int argc, char** argv)
       outputfile = inputfile + extention(compresstype);
     else
     {
-      size_t lastindex = inputfile.find_last_of("."); 
+      string filename(basename((char *)inputfile.c_str()));
+      size_t lastindex = filename.find_last_of("."); 
       if ( lastindex == string::npos)
       {
         fprintf(stderr, RED ">>> Syntax Error : output file must be set (no extension detected)" RESET "\n");
         return e_UsageError;            
       }
       else
-        outputfile      = inputfile.substr(0, lastindex); 
+      {
+        size_t lastindex = inputfile.find_last_of("."); 
+        outputfile       = inputfile.substr(0, lastindex); 
+      }
     }
     
   }
@@ -341,7 +323,7 @@ int main(int argc, char** argv)
   printf(BOLD UNDERLINE "ARGUMENTS [%s]:" RESET "\n\n", unzip ? "UNZIP" : "ZIP");
   printf("  > " UNDERLINE "input file" RESET "  : %s\n", inputfile.c_str());
   printf("  > " UNDERLINE "output file" RESET " : %s\n", outputfile.c_str());
-  printf("  > " UNDERLINE "type" RESET "        : %s\n", tostring(compresstype));
+  printf("  > " UNDERLINE "type" RESET "        : %s\n", zFile::toString(compresstype));
   if (!unzip)
   {
     printf("  > " UNDERLINE "level" RESET "       : %d\n", i16level);
@@ -389,6 +371,7 @@ int main(int argc, char** argv)
   stat(inputfile.c_str(), &st);
   size_t          filesize  = st.st_size;
   size_t          ngread    = 0;
+
   int             lastratio = 0;
 
   //int aux;
@@ -422,7 +405,11 @@ int main(int argc, char** argv)
     int ratio = int(100. * float(ngread)/float(filesize));
     if (ratio != lastratio)
     {
+#if _WIN32 || _WIN64       
+      printf("   > progress: %Id MB / %Id MB (%2d %%)\r", ngread/1024/1024, filesize/1024/1024, ratio);
+#else
       printf("   > progress: %ld MB / %ld MB (%2d %%)\r", ngread/1024/1024, filesize/1024/1024, ratio);
+#endif      
       fflush(stdout); 
       lastratio = ratio;
     }

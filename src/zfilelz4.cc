@@ -16,6 +16,7 @@
 #include "lz4/lz4.h"
 #include "lz4/lz4hc.h"
 #include "endian/endian.h"
+#include "commun/define.h"
 #include "mempool.hh"
 #include "zfilelz4.hh"
 
@@ -125,6 +126,8 @@ zFilelz4::zFilelz4 (const char * filename, OpenMode_t mode, uint32_t blocsize, u
   __log__(1, ">>> Warning : zFilelz4 DEBUG is enabled\n");
 
   // initalize members
+  _file.type            = e_lz4;
+
   _zip.level            = level;
 
   _lz4.compressfunc     = NULL;
@@ -234,160 +237,6 @@ zFilelz4::~zFilelz4 ()
 /* ------------------------------------------------------------------------------------------- */
 /* --                                    PUBLIC METHODS                                     -- */ 
 /* ------------------------------------------------------------------------------------------- */
-#if 0
-
-/*!
- * \brief   read data method
- * 
- * \param ptr [in] : input data 
- * \param size [in] : data size to read
- *
- * \return  no returned value. use fail to check for errors
- *          To get error details use getError()
- * */
-size_t zFilelz4::read(char * ptr, size_t size)
-{
-  if (_file.mode == e_WriteMode)
-  {
-    setError(e_ReadError, "Error reading a file openned in write mode");
-    return 0;
-  }
-  else if ( _unlz4.eos)
-  {
-    setError(e_ReadError, "End of file reached");
-    return 0;
-  }
-
-  size_t readsize = size;
-  char * readptr  = ptr;
-#ifdef __DEBUG__  
-  printf("[READ ] : read order : size = %ld\n", size);
-#endif 
-
-  while (readsize > 0)
-  {
-    size_t nsize = min(readsize, (size_t)_unlz4.unzblocsize - (size_t)(_unlz4.unzptr - _unlz4.unzdata) );
-    if (nsize != 0)
-    {
-#ifdef __DEBUG__  
-      printf("[READ ] :     > copy data : insize = %ld\n", nsize);
-#endif 
-      memcpy(readptr, _unlz4.unzptr, nsize);
-      _unlz4.unzptr += nsize;
-      readptr       += nsize;
-      readsize      -= nsize;
-    }
-    else
-    {
-      /* read bloc size */
-      uint32_t blocsize, uncompressed;
-      nsize =_file.stream.read((char *)&blocsize, sizeof(blocsize)).gcount();
-      if (_file.stream.fail()  || (nsize != sizeof(blocsize)))
-      {
-        setError(e_ReadError, "Error reading lz4 blocsize");
-        break;
-      }
-      /* read data bloc */
-      blocsize     = le32toh(blocsize);
-      uncompressed = blocsize >> 31;
-      blocsize     = blocsize & 0x7fffffff;  
-      // end of lz4 stream
-      if (blocsize == __LZ4S_EOS__)
-      {
-        // read stream crc
-        uint32_t crc; 
-        nsize =_file.stream.read((char *)&crc, sizeof(crc)).gcount();
-        if (_file.stream.fail()  || (nsize != sizeof(crc)))
-        {
-          setError(e_ReadError, "Error reading file chekcsum");
-          break;
-        }
-        if (XXH32_digest(_xxh32state) != le32toh(crc))
-        {
-          setError(e_TailError, "Error in file chekcsum");
-          break;
-        }
-        _unlz4.eos = true;
-        break;
-      }
-      // read bloc
-#ifdef __DEBUG__  
-      printf("[READ ] :     > read bloc : insize = %d\n", blocsize);
-#endif 
-      nsize        = _file.stream.read(_unlz4.zdata, blocsize).gcount();
-      if (_file.stream.fail() || (nsize != blocsize))
-      {
-        setError(e_ReadError, "Error reading lz 4 bloc data");
-        break;
-      }
-      else
-      {
-        // uncompress data
-        if (uncompressed)
-        {
-#ifdef __DEBUG__  
-          printf("[READ ] :     > unzipped data : insize = %d\n", blocsize);
-#endif 
-          memcpy(_unlz4.unzdata, _unlz4.zdata, blocsize);
-          _unlz4.unzblocsize = blocsize;
-        }
-        else
-        {
-#ifdef __DEBUG__  
-          printf("[READ ] :     > unzip data : insize = %d\n", blocsize);
-#endif 
-          _unlz4.unzblocsize = _unlz4.uncompressfunc(NULL, _unlz4.zdata, _unlz4.unzdata, blocsize, _blocsize);
-        }   
-        // update unzipped data current ptr 
-        _unlz4.unzptr      = _unlz4.unzdata;
-        // compute stream crc
-        XXH32_update(_xxh32state, _unlz4.unzdata, _unlz4.unzblocsize);  
-      }     
-    }
-  }
-
-  return (size - readsize);
-} 
-
-
-/*!
- * \brief seek position (through compression)
- *
- * \param offset [in] : seek offset (can be negatif) in the uncompressed file
- * \param way    [in] : seek way
- *
- * \return returned a boolean telling if an error accured during the last 
- *         operation 
- */
-bool zFilelz4::seek(size_t offset, SeekDirection_t way)
-{
-  if (_file.mode == e_ReadMode)
-  {  
-    if (_listindex.size() == 0)
-    {
-      setError(e_SeekError, "Seek unhandled for no tailed files");
-      return false;      
-    }
-#error : je suis ici  
-    switch (way) 
-    {
-      case e_SeekBegin   : _file.stream.seekg(offset, ios_base::beg); break;
-      case e_SeekCurrent : _file.stream.seekg(offset, ios_base::cur); break;
-      case e_SeekEnd     : _file.stream.seekg(offset, ios_base::end); break;
-    }
-    if (_file.stream.fail())
-      return false;
-    else
-      return true;
-  }
-  else
-  {
-    setError(e_SeekError, "Seek unhandled for write mode files");
-    return false;
-  }
-}
-#endif
-
 /*!
  * \brief   flush data (force physical data write)
  * 
@@ -481,6 +330,7 @@ void zFilelz4::readTail ()
     // read Metadata
     char   ptr[header.size];
     _file.stream.seekg(-(size_t)header.size, ios_base::end);
+    size_t lastbloc = _file.stream.tellg();
     nsize = _file.stream.read(ptr, header.size).gcount();
     if (_file.stream.fail() || (nsize != header.size))
     {
@@ -495,12 +345,22 @@ void zFilelz4::readTail ()
     ident->size    = le32toh(ident->size);
     if ( (ident->magic == __METADATA_MAGIC_NUMBER_0__) && (ident->version == 1) && (ident->type == e_MetaIndex) )
     {    
-      IndexEntry_t * index = (IndexEntry_t *)(ptr + sizeof(MetaIdentification_t));
-      for (size_t i = 0; i < ident->size / sizeof(IndexEntry_t); i++)
+      size_t         indexsize = __sizeof__(IndexEntry_t, offset);
+      char         * pptr      = (ptr + sizeof(MetaIdentification_t));
+      for (size_t i = 0; i < (ident->size / indexsize) - 1; i++)
       {
-        _listindex.push_back( IndexEntry_t( (*index).offset, (*index).zoffset ) );
-        index++;
+        IndexEntry_t * index    = (IndexEntry_t *)(pptr);
+        IndexEntry_t * nxtindex = (IndexEntry_t *)(pptr + indexsize);
+        _listindex.insert( IndexEntry_t( index->offset.n, nxtindex->offset.n - index->offset.n,
+                                         index->offset.z, nxtindex->offset.z - index->offset.z) );
+        pptr += indexsize;
       }
+      // insert last bloc 
+      IndexEntry_t * index    = (IndexEntry_t *)(pptr);
+      _listindex.insert( IndexEntry_t( index->offset.n, lastbloc - index->offset.z,
+                                       index->offset.z, lastbloc - index->offset.z) );
+      
+
     }
   }  
 
@@ -572,15 +432,17 @@ void zFilelz4::writeTail ()
   /* ---------------------------------------------- */
   MetaHeader_t         header;
   MetaIdentification_t ident;
+  size_t               indexsize = __sizeof__(IndexEntry_t, offset);
+
 
   // tail header
   header.magic  = htole32(__SKIPPABLE_MAGIC_NUMBER_0__);
-  header.size   = htole32( sizeof(MetaIdentification_t) + _listindex.size() * sizeof(IndexEntry_t) + sizeof(MetaHeader_t));
+  header.size   = htole32( sizeof(MetaIdentification_t) + _listindex.size() * indexsize + sizeof(MetaHeader_t));
   // meta data identification
   ident.magic   = htole32(__METADATA_MAGIC_NUMBER_0__);
   ident.version = htole32(1);
   ident.type    = htole32(e_MetaIndex);
-  ident.size    = htole32(_listindex.size() * sizeof(IndexEntry_t));
+  ident.size    = htole32(_listindex.size() * indexsize);
   // write tail header
   _file.stream.write((const char *)(&header), sizeof(header));
   if (_file.stream.fail())
@@ -590,10 +452,10 @@ void zFilelz4::writeTail ()
   if (_file.stream.fail())
     setError(e_WriteError, "Error writing lz4 tail metadata identification");
   //write of index
-  for (list<IndexEntry_t>::iterator it = _listindex.begin();
+  for (set<IndexEntry_t>::iterator it = _listindex.begin();
        it != _listindex.end(); it++)
   {
-    _file.stream.write((const char *)&(*it), sizeof(IndexEntry_t));
+    _file.stream.write((const char *)&(*it).offset, indexsize);
   }
   // re-write header : to optimize reverse read
   _file.stream.write((const char *)(&header), sizeof(header));

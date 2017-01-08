@@ -4,15 +4,15 @@
 // CMake Tools Configuration
 
   // The preferred CMake generator(s) to use when configuring (tried in order of listing)
-  "cmake.preferredGenerators": [
-    "Unix Makefiles",
-    "MinGW Makefiles",
-  ],  
+  //"cmake.preferredGenerators": [
+  //  "Unix Makefiles",
+  //  "MinGW Makefiles"
+  //],  
 
   // The CMake generator to use
-  //"cmake.generator" : "MinGW Makefiles"
+  //"cmake.generator" : "MinGW Makefiles",
 
   // The directory where CMake build files will go
-  "cmake.buildDirectory": "${workspaceRoot}/build"
+  //"cmake.buildDirectory": "${workspaceRoot}/build"
   
 }

@@ -11,14 +11,13 @@
  * Copyright (C) 2011-2016
  *
  * */
-
-
 #ifndef __ZFILE_HH__
 #define __ZFILE_HH__
 
 #include <stdint.h>
 #include <fstream>
 #include <string>
+#include <set>
 #include <list>
 
 using namespace std;
@@ -66,16 +65,43 @@ class zFile
      * */
     typedef struct _IndexEntry_t
     {
-      uint32_t offset;  /*!< offset of a block in the compressed stream */
-      uint32_t zoffset; /*!< offset of a block in the uncompress stream */
+      struct _offset {
+        uint32_t n;  /*!< offset of a block in the original stream */
+        uint32_t z; /*!< offset of a block in the zipped stream */
+        /*!< initilizer */
+        _offset (uint32_t offset, uint32_t zoffset) : 
+            n(offset),
+            z(zoffset)
+            { };
+      } offset;
       
+      struct _size {
+        uint32_t n;  /*!< size of a block */
+        uint32_t z; /*!< size of a zipped bloc */
+        /*!< initilizer */
+        _size (uint32_t size, uint32_t zsize) : 
+            n(size),
+            z(zsize)
+            { };
+      } size;
+
       /*!< initilizer */
-      _IndexEntry_t (uint32_t offset, uint32_t zoffset) :
-          offset(offset),
-          zoffset(zoffset)
+      _IndexEntry_t (uint32_t offset, uint32_t size, uint32_t zoffset, uint32_t zsize) :
+          offset(offset, zoffset),
+          size(size, zsize)
           { };
 
+      /*!< comparator */
+      struct compare {
+        bool operator() (const _IndexEntry_t& p1, const _IndexEntry_t& p2) const
+        {
+          return p1.offset.n < p2.offset.n;
+        }        
+      };
+
     } IndexEntry_t;  
+
+
 
   public :
     /*!
@@ -167,6 +193,15 @@ class zFile
     static CompressionType_t getFormat(const char * filename); 
 
     /*!
+     * \brief   get compression type translation
+     * 
+     * \param type [in] : compression typê
+     *
+     * \return compression type const char 
+     * */
+    static const char * toString(CompressionType_t type); 
+
+    /*!
      * \brief   create the appropriate zFile stream
      * 
      * \param filename [in] : file name
@@ -228,10 +263,13 @@ class zFile
      void close();      
 
     /*!
-     * \brief seek position in the uncompressed file. the position provided is 
-     *        relative to the uncompressed file
+     * \brief seek position in the file. the position provided is 
+     *        relative to the file
      *
-     * \param offset [in] : seek offset (can be negatif) in the uncompressed file
+     * This function do not take into account the file type. it seek the requested 
+     * position in the openned file
+     *
+     * \param offset [in] : seek offset (can be negatif) in the file
      * \param way    [in] : seek way
      *
      * \return returned a boolean telling if an error accured during the last 
@@ -240,16 +278,16 @@ class zFile
     virtual bool seekf(size_t offset, SeekDirection_t way);
 
     /*!
-     * \brief seek position in the file compressed file. the position provided is 
-     *        relative to the compressed file
+     * \brief seek position in the uncompressed file. the position provided is 
+     *        relative to the uncompressed file
      *
-     * \param offset [in] : seek offset (can be negatif) in the zipped file
+     * \param offset [in] : seek offset (can be negatif) in the unzipped file
      * \param way    [in] : seek way
      *
      * \return returned a boolean telling if an error accured during the last 
      *         operation 
      */
-    virtual bool seekz(size_t offset, SeekDirection_t way) { return zFile::seekf(offset, way); };    
+    virtual bool seekz(size_t offset, SeekDirection_t way);
 
     /*!
      * \brief check for errors
@@ -341,11 +379,10 @@ class zFile
   /* --                               MEMBERS                               -- */
   /* ------------------------------------------------------------------------- */
   protected :
-    zFileError_t                        _lasterror; /*!< last error */
-    string                              _errormsg;  /*!< error message */
-    uint32_t                            _blocsize;  /*!< compression blocsize */
-    list<IndexEntry_t>                  _listindex; /* index list */
-    //list<IndexEntry_t, f_compareIndex>  _listindex; /* index list */
+    zFileError_t                              _lasterror; /*!< last error */
+    string                                    _errormsg;  /*!< error message */
+    uint32_t                                  _blocsize;  /*!< compression blocsize */
+    set<IndexEntry_t, IndexEntry_t::compare>  _listindex; /* index list */
     struct {
          uint16_t          level; /*!< compression level */
          size_t            noffset; /*< total input size */
@@ -362,6 +399,7 @@ class zFile
          fstream           stream; /*!< file descriptor */
          string            filename; /*!< file name */
          OpenMode_t        mode; /*!< open mode */
+         CompressionType_t type;
     } _file;
   };
 
